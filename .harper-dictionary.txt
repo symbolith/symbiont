@@ -1,0 +1,4 @@
+EmbeddedResource
+ResourceLink
+SessionUpdate
+ToolCall
