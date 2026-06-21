@@ -11,26 +11,27 @@ Every feature is exposed both as a `:Symbiont*` command and a corresponding `req
 ## Config
 
 ```lua
-require("symbiont").setup({
-  cmd           = "claude",
-  args          = { "--acp" },
-  env           = {},                          -- optional env vars
-  create_window = function() ... return win end,
-  create_plan_window = function() ... return win end,
-  notification_handler = function(level, msg, kind) return "notify" end,
-})
+require('symbiont').setup {
+  agents = {
+    { name = 'default', cmd = { 'claude-code-acp' } },
+    { name = 'copilot', cmd = { 'copilot-acp' } },
+  },
+  default_agent = 'default',
+}
 ```
+
+**`agents`** — List of agent configurations. Each entry has `name` (identifier), `cmd` (string array for `vim.system`). Multiple agents can run concurrently, each owning its own sessions.
+
+**`default_agent`** — Name of the agent used when creating a session without specifying one.
 
 **`create_window`** — Must return a window handle; the plugin attaches its buffer to it. Defaults to a vertical split to the right of equal width. Override to use floats, tabs, or any custom layout.
 
 **`create_plan_window`** — Must return a window handle. Defaults to a horizontal split below.
 
-**`notification_handler`** — Called for every agent notification. Receives `(level, msg, kind)`. Returns one of:
-- `"ignore"` — discard
-- `"notify"` — `vim.notify(message, level)`
-- `"system"` — system notification via `notify-send`
+// what could nvim notification be?
+**`notification_handler`** — Called for every notification, routes the notification either to system or nvim notifications
 
-Default: returns `"notify"` for all events.
+
 
 ## Commands
 
@@ -43,8 +44,8 @@ Default: returns `"notify"` for all events.
 | `:Symbiont cancel`         | Send `session/cancel` notification                           |
 | `:[range]Symbiont submit {text}` | Send prompt (context-dependent, see below)                   |
 | `:[range]Symbiont append`        | Attach current file/selection to prompt as resource link     |
-| `:SymbiontMode [id]`       | Get or set agent mode (picker if no arg)                     |
-| `:SymbiontPlan`            | Toggle dedicated plan buffer                                 |
+| `:Symbiont mode [id]`       | Get or set agent mode (picker if no arg)                     |
+| `:Symbiont plan`            | Toggle dedicated plan buffer                                 |
 
 ### Symbiont
 
@@ -112,10 +113,10 @@ Rendered in the prompt area as `[{title}]({uri})` (per existing `ContentBlock` r
 
 The user stays in their current window. Use `:Symbiont` to see the response or review the populated prompt.
 
-### SymbiontMode [id]
+### Symbiont mode
 
-- `:SymbiontMode` with no argument — opens `vim.ui.select` with available modes.
-- `:SymbiontMode architect` — bypasses the picker and sends `session/set_mode` directly.
+- `:Symbiont mode` with no argument — opens `vim.ui.select` with available modes.
+- `:Symbiont mode architect` — bypasses the picker and sends `session/set_mode` directly.
 
 Tab completion pulls from `availableModes` returned in `session/new` / `session/load` responses. The actual mode change notification comes back via `session/update` with `sessionUpdate = "current_mode_update"`, which triggers the `AcpModeChanged` autocmd. The agent can also switch modes autonomously (e.g. via a `switch_mode` tool call), and the plugin picks that up the same way.
 
@@ -123,7 +124,7 @@ Programmatic: `require("symbiont").set_mode("architect")`, `require("symbiont").
 
 `statusline()` returns a string for statusline integration. Empty string when the agent is not running, otherwise the current mode name.
 
-### SymbiontPlan
+### Symbiont plan
 
 Toggles a dedicated read-only plan buffer (`filetype=symbiont-plan`, `buftype=nofile`). Only works when an agent is running; otherwise notifies "no active session". The buffer updates live as `plan` session updates arrive.
 
@@ -133,11 +134,38 @@ Programmatic: `require("symbiont").toggle_plan()`.
 
 ## Notifications & Autocmds
 
+### Notification Catalog
+
+All user-facing notifications route through `notify.notify(level, msg, kind)`. The `notification_handler` config option intercepts every call.
+
+Kind taxonomy: `"fatal"`, `"rpc"`, `"transport"`, `"lifecycle"`, `"command"`.
+
+| Kind | Level | Message | Trigger |
+|------|-------|---------|---------|
+| `"fatal"` | `"error"` | `"initialize failed: {err}"` | `initialize` RPC error |
+| `"fatal"` | `"error"` | `"session/list failed: {err}"` | `session/list` RPC error (startup) |
+| `"fatal"` | `"error"` | `"session/new failed: {err}"` | `session/new` RPC error (startup) |
+| `"fatal"` | `"error"` | `"session/load failed: {err}"` | `session/load` RPC error (startup) |
+| `"rpc"` | `"error"` | `"prompt failed: {err}"` | `session/prompt` RPC error |
+| `"rpc"` | `"error"` | `"set_mode failed: {err}"` | `session/set_mode` RPC error |
+| `"rpc"` | `"error"` | `"session/list failed: {err}"` | `session/list` RPC error (switch) |
+| `"rpc"` | `"error"` | `"session/load failed: {err}"` | `session/load` RPC error (switch) |
+| `"rpc"` | `"error"` | `"session/new failed: {err}"` | `session/new` RPC error (runtime) |
+| `"transport"` | `"warn"` | `"{parse error}"` | Malformed JSON on stdout |
+| `"lifecycle"` | `"info"` | `"session loaded"` | `session/load` success (runtime) |
+| `"lifecycle"` | `"info"` | `"new session created"` | `session/new` success (runtime) |
+| `"lifecycle"` | `"info"` | `"session stopped"` | `stop()` called |
+| `"lifecycle"` | `"info"` | `"agent exited (code={n}, signal={n})"` | Agent process exits |
+| `"lifecycle"` | `"info"` | `"no other sessions"` | `switch` with only one session |
+| `"lifecycle"` | `"info"` | `"no active session"` | `toggle_plan` with no session |
+| `"command"` | `"error"` | `"unknown subcommand: {name}"` | Invalid `:Symbiont` subcommand |
+| `"command"` | `"info"` | `"no modes available"` | `:Symbiont mode` with no modes |
+
 The plugin fires one `User` autocmd and listens to one built-in autocmd:
 
 ### DirChanged
 
-The plugin listens to the `DirChanged` autocmd. On cwd change, it auto-stops the current agent and destroys the buffer. The next `SymbiontToggle` starts fresh in the new cwd with the normal session continuity flow. Session data is preserved on the agent side, so resuming in the old cwd later picks up where it left off.
+The plugin listens to the `DirChanged` autocmd. On cwd change, it auto-stops the current agent and destroys the buffer. The next `:Symbiont` starts fresh in the new cwd with the normal session continuity flow. Session data is preserved on the agent side, so resuming in the old cwd later picks up where it left off.
 
 ### AcpModeChanged
 
@@ -150,6 +178,10 @@ Fired when the agent's mode changes. `vim.v.event.data` contains:
 Modes are agent-defined and advertised dynamically.
 
 ## Structural Requirements
+
+### Client Capabilities
+
+The client declares `clientCapabilities.terminal = false` in the `initialize` request. The plugin does not implement the `terminal/*` methods and drops `ToolCallContent` entries with `type: "terminal"`; agents must not expect live terminal rendering. Tool output from shell commands is still supported as text content blocks.
 
 ### Session
 
@@ -165,6 +197,10 @@ Messages from the same role arriving consecutively are merged (content appended 
 
 Loaded sessions replay their history into the internal block model so the full conversation renders immediately.
 
+`agent_commands` stores available commands in state and provides tab completion when the user types `/` in the prompt area.
+
+`agent_options` updates internal config option state of the agent and refreshes the statusline. Programmatic: `require("symbiont").get_config_options()`.
+
 ### Buffer
 
 Single buffer, filetype `symbiont`, buftype `nofile`.
@@ -177,7 +213,9 @@ The plugin registers a custom `symbiont` filetype and injects the markdown trees
 
 See [rendering.md](rendering.md).
 
-The prompt area is the last user message block. `InsertEnter` autocmd prevents edits above it.
+Annotations on content blocks are honored — `audience: ["assistant"]` hides the block from the user buffer; content with `priority` below a configurable threshold is not rendered.
+
+The prompt is the last user message block.
 
 #### Permissions
 

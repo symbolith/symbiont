@@ -2,89 +2,129 @@
 
 Ownership boundaries, dependency edges, and layering. See [Module Interfaces](module-interfaces.md) for API signatures, [Data Structures](data-structures.md) for types, and [Data Flow](data-flow.md) for message sequences.
 
-## Dependency Graph
+## Directory Layout
 
 ```
-plugin/symbiont.lua
-└── init
-    └── session
-        ├── rpc
-        ├── acp
-        ├── conversation
-        ├── plan
-        └── buffer
-            └── render
-    └── config
-        health
+plugin/
+└── symbiont.lua
+lua/
+├── symbiont.lua
+└── symbiont/
+    ├── client.lua
+    ├── client/
+    │   ├── rpc.lua
+    │   ├── acp.lua
+    │   ├── decode.lua
+    │   └── encode.lua
+    ├── session.lua
+    ├── session/
+    │   ├── conversation.lua
+    │   ├── plan.lua
+    │   ├── context.lua
+    │   └── mode.lua
+    ├── config.lua
+    ├── render.lua
+    ├── notify.lua
+    ├── buffer.lua
+    └── health.lua
+ftplugin/
+└── symbiont.lua
+queries/
+└── symbiont/
+    └── folds.scm
 ```
-
-`plugin/symbiont.lua` sits outside the module graph — registers commands and autocommands, defers `require("symbiont")` to first invocation.
 
 ## Modules
 
-### init
+### symbiont
 
-`lua/symbiont/init.lua` — depends on **config**, **session**
+- Command definitions, plugin state
+- Holds list of clients, tracks active session
+- Creates clients via `create_client`, wires `on_exit` callback
+- `session()` returns active session, creating client + session lazily if needed
 
-Public API surface and `setup`. Delegates to `session`.
+### client/
 
-### config
+**client**
 
-`lua/symbiont/config.lua`
+- Owns agent process and sessions
+- Creates Session instances on `session_new`/`session_load`, stores in `sessions` map
+- Routes incoming `session/update` notifications to session methods via `decode`
+- Routes `session/request_permission` to session's `set_permission`
+- Pending request tracking, process lifecycle
+- Uses `encode` to convert internal contents to wire format on outbound requests
 
-Plugin configuration: defaults, user overrides, validation.
+**rpc**
 
-### session
+- Encodes messages to NDJSON lines for stdin
+- Decodes NDJSON lines from stdout to messages
 
-`lua/symbiont/session.lua` — depends on **config**, **rpc**, **acp**, **conversation**, **plan**, **buffer**
+**acp**
 
-Session lifecycle (list/load/new/switch/stop), mode and config option tracking, context capture, permission flow coordination, notification routing.
+- Provides functions to create RPC payloads
+- ACP type definitions
 
-### rpc
+**decode**
 
-`lua/symbiont/rpc.lua`
+- Converts ACP wire types (camelCase) to internal types (snake_case)
+- Functions: `content_block`, `tool_status`, `tool_locations`, `tool_content`, `tool_output`, `tool_call`, `tool_call_update`, `plan_entries`, `permission_request`
 
-JSON-RPC 2.0 transport. No knowledge of ACP semantics.
+**encode**
 
-### acp
+- Converts internal types (snake_case) to ACP wire types (camelCase)
+- Functions: `content_block`, `tool_status`, `tool_locations`, `tool_content`, `tool_output`, `tool_call`, `tool_call_update`, `plan_entries`, `permission_request`
 
-`lua/symbiont/acp.lua`
+### session/
 
-ACP protocol semantics. Request param builders, notification discriminator dispatch, type constant tables. No knowledge of transport or session state.
+**session**
 
-### conversation
+- Holds conversation, plan, mode, buffer, permission state
+- Receives client reference at construction for RPC delegation
+- Provides methods for state mutations (`append_user`, `append_agent`, `update_tool_turn`, `update_tool_call`)
+- Delegates outbound RPC to its client (`prompt`, `cancel`, `permission_selected`)
 
-`lua/symbiont/conversation.lua`
+**conversation**
 
-Ordered block storage. Message merging, tool call patching.
+- Ordered block storage
+- Rendering: delegates to render module
 
-### plan
+**plan**
 
-`lua/symbiont/plan.lua`
+- Plan entry state
+- Complete replacement on each update
 
-Plan entry state. Complete replacement on each update.
+**context**
 
-### render
+- External context capture
+- Builds content blocks from non-conversation buffers, renders into the symbiont buffer
+- Handles append
 
-`lua/symbiont/render.lua`
+**render**
 
-Pure functions: conversation and plan data → markdown lines. No state.
+- Transforms conversation, plan, and permission data into markdown lines
+- Reads header strings from `config`
+- No state
 
-### buffer
+**config**
 
-`lua/symbiont/buffer.lua` — depends on **config**, **render**
+- Plugin configuration: defaults, user overrides, validation
+- Multi-agent: `agents` list with name/cmd per agent, `default_agent`
 
-Neovim buffer lifecycle for the conversation buffer and the plan buffer. Separator management, edit guard, keymaps, rendering.
+**notify**
 
-### health
+- Notification dispatch via `notification_handler`
 
-`lua/symbiont/health.lua`
+**buffer**
 
-`:checkhealth symbiont` integration.
+- Neovim buffer lifecycle, edit guard, keymaps, rendering
+
+**health**
+
+- `:checkhealth symbiont` integration
 
 ## Support Files
 
-**`plugin/symbiont.lua`** — Command registration (`:Symbiont`, `:SymbiontMode`, `:SymbiontPlan`), `BufLeave` and `DirChanged` autocommands.
+**`plugin/symbiont.lua`** — Command registration (`:Symbiont` with subcommands), `BufLeave` and `DirChanged` autocommands.
 
 **`ftplugin/symbiont.lua`** — Buffer-local display options for `filetype=symbiont`.
 
@@ -92,6 +132,8 @@ Neovim buffer lifecycle for the conversation buffer and the plan buffer. Separat
 
 ## Acyclic Constraint
 
-The graph is strictly acyclic. Leaf modules (`config`, `rpc`, `acp`, `conversation`, `plan`, `render`, `health`) have no internal dependencies. `buffer` depends on `config` and `render`. `session` depends on all leaves plus `buffer`. `init` depends on `config` and `session`.
+The graph is strictly acyclic. Leaf modules (`config`, `rpc`, `acp`, `decode`, `encode`, `plan`, `health`) have no internal dependencies. `render` depends on `config`. `conversation` depends on `render` and `config`. `buffer` depends on `config`. `session` depends on `conversation`, `plan`, `mode`, `render`, and `buffer`. `client` depends on `rpc`, `acp`, `decode`, `encode`, and `session`. `symbiont` depends on `config` and `client`. No module outside `client` references `acp`, `decode`, or `encode`.
 
 Modules load in any order without risk of cycles. Change impact is local: modifying a leaf can only affect its dependents; modifying `config` can affect everything.
+
+`plugin/symbiont.lua` sits outside the module graph — registers commands and autocommands, defers `require("symbiont")` to first invocation.

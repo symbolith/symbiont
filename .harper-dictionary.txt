@@ -2,3 +2,4 @@ EmbeddedResource
 ResourceLink
 SessionUpdate
 ToolCall
+rpc

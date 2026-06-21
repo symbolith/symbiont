@@ -11,5 +11,5 @@
 
 ## Research
 
-- [ACP Messages](research/acp-messages.md) — ACP v1 message types and schema reference
+- [Notifications](research/notifications.md) — vim.notify API, log levels, notification UI integration, handler pattern
 - [Rendering](research/rendering.md) — prior art survey of other Neovim plugin rendering approaches
