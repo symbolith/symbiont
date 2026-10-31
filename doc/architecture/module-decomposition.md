@@ -128,7 +128,7 @@ queries/
 
 **`ftplugin/symbiont.lua`** — Buffer-local display options for `filetype=symbiont`.
 
-**`queries/symbiont/folds.scm`** — Treesitter fold query for tool call block folding.
+**`queries/symbiont/folds.scm`** — Treesitter fold query. Level 1: the Tool Call and Thinking sections. Level 2: each tool-call body (the blockquote/code block inside a list item), nested under the Tool Call section. The Thinking body has no level-2 fold — the reasoning channel is rendered separately by the client.
 
 ## Acyclic Constraint
 
