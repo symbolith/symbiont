@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Symbiont is a Neovim plugin (pure Lua, no build step) implementing the Agent Client Protocol (ACP) v1. See `doc/requirements/plugin.md` for the full spec (config, commands, session management, rendering pipeline).
+Symbiont is a Neovim plugin for interacting with Factors. The code here is version 0.1.0 (pure Lua, no build step), an Agent Client Protocol (ACP) v1 client. Version 0.2.0 replaces it with a Neovim client for people to take part in Factors as actors. See `doc/requirements/plugin.md` for the full spec of 0.1.0 (config, commands, session management, rendering pipeline).
 
 ## Testing
 
@@ -15,7 +15,7 @@ Tests use plenary.nvim's busted runner:
 nvim --headless -c "PlenaryBustedDirectory tests/ {minimal_init = 'tests/minimal_init.lua'}"
 
 # Single test file
-nvim --headless -c "PlenaryBustedFile tests/symbiont/render_spec.lua {minimal_init = 'tests/minimal_init.lua'}"
+nvim --headless -c "PlenaryBustedDirectory tests/symbiont/session/render_spec.lua {minimal_init = 'tests/minimal_init.lua'}"
 ```
 
 Requires plenary.nvim at `~/.local/share/nvim/plugged/plenary.nvim`.
