@@ -266,9 +266,15 @@ render_content = function(content, cwd)
 end
 
 ---@param assistant_content symbiont.AssistantContent
----@return boolean
-local function is_tool_call(assistant_content)
-  return assistant_content.kind == 'tool_call'
+---@return 'tool_call'|'thought'|'message'
+local function assistant_section(assistant_content)
+  if assistant_content.kind == 'tool_call' then
+    return 'tool_call'
+  end
+  if assistant_content.kind == 'thought' then
+    return 'thought'
+  end
+  return 'message'
 end
 
 ---@param tool_calls symbiont.ToolCall[]
@@ -289,13 +295,26 @@ local function render_tool_calls(tool_calls, cwd)
   return flatten { { config.tool_call_header, '' }, flatten_with(units, '') }
 end
 
+---@param contents symbiont.Content[]
+---@param cwd string
+---@return string[]
+local function render_message(contents, cwd)
+  return flatten { { config.assistant_message_header, '' }, render_contents(contents, cwd) }
+end
+
 ---@param assistant_contents symbiont.AssistantContent[]
 ---@param cwd string
 ---@return string[]
 local function render_assistant_contents(assistant_contents, cwd)
   return flat_map(function(group)
-    return group.key and render_tool_calls(group.items, cwd) or render_contents(group.items, cwd)
-  end, chunk_by(assistant_contents, is_tool_call))
+    if group.key == 'tool_call' then
+      return render_tool_calls(group.items, cwd)
+    end
+    if group.key == 'message' then
+      return render_message(group.items, cwd)
+    end
+    return render_contents(group.items, cwd)
+  end, chunk_by(assistant_contents, assistant_section))
 end
 
 ---@param turn symbiont.Turn
