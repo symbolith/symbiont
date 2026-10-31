@@ -23,44 +23,32 @@ function M.new()
   end
 
   ---@param lines string[]
-  ---@return integer start_line
-  ---@return integer end_line
-  function self:append_lines(lines)
-    local start_line = vim.api.nvim_buf_line_count(bufnr)
-    if start_line == 1 and vim.api.nvim_buf_get_lines(bufnr, 0, 1, false)[1] == '' then
-      start_line = 0
-    end
-    vim.api.nvim_buf_set_lines(bufnr, start_line, start_line, false, lines)
-    return start_line, start_line + #lines - 1
-  end
-
-  ---@param start_line integer
-  ---@param end_line integer
-  ---@param lines string[]
-  ---@return integer new_end_line
-  function self:replace_lines(start_line, end_line, lines)
-    vim.api.nvim_buf_set_lines(bufnr, start_line, end_line + 1, false, lines)
-    return start_line + #lines - 1
-  end
-
-  ---@param start_line integer
-  ---@param end_line integer
-  function self:delete_lines(start_line, end_line)
-    vim.api.nvim_buf_set_lines(bufnr, start_line, end_line + 1, false, {})
-  end
-
-  ---@param lines string[]
   function self:set_lines(lines)
     vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
   end
 
-  function self:clear()
-    self:set_lines {}
+  ---Patches only the lines that changed, so Neovim recomputes folds for the
+  ---affected lines and reuses the fold state of every other line (see
+  ---|fold-expr-slow|). A full rewrite would reset all folds.
+  ---@param lines string[]
+  function self:update(lines)
+    local current = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    local hunks = vim.text.diff(
+      table.concat(current, '\n') .. '\n',
+      table.concat(lines, '\n') .. '\n',
+      { result_type = 'indices' }
+    ) --[[@as integer[][] ]]
+    for index = #hunks, 1, -1 do
+      local start_old, count_old, start_new, count_new =
+        hunks[index][1], hunks[index][2], hunks[index][3], hunks[index][4]
+      local first = count_old > 0 and start_old - 1 or start_old
+      local replacement = vim.list_slice(lines, start_new, start_new + count_new - 1)
+      vim.api.nvim_buf_set_lines(bufnr, first, first + count_old, false, replacement)
+    end
   end
 
-  ---@return integer
-  function self:line_count()
-    return vim.api.nvim_buf_line_count(bufnr)
+  function self:clear()
+    self:set_lines {}
   end
 
   return self
