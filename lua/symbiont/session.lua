@@ -40,7 +40,7 @@ function M.new(session_id, client, cwd)
     refresh_pending = true
     vim.schedule(function()
       refresh_pending = false
-      buffer:set_lines(render.conversation(conversation, cwd))
+      buffer:update(render.conversation(conversation, cwd))
     end)
   end
 
