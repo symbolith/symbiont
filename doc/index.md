@@ -1,5 +1,7 @@
 # Symbiont Documentation
 
+These docs describe Symbiont 0.1.0, the ACP v1 client.
+
 ## Architecture
 
 - [Architecture Overview](architecture/overview.md) — system design, module decomposition, data flow, extension points
