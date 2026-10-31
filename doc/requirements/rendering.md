@@ -1,6 +1,12 @@
 ## Headers
 
-`{user_header}` and `{agent_header}` are `config.header.user` and `config.header.assistant` respectively. See [plugin.md](plugin.md) for defaults and configuration.
+`{user_header}` is `config.header.user`.
+
+`{agent_header}` is `config.header.assistant`.
+
+`{assistant_message_header}` is `config.assistant_message_header`.
+
+See [plugin.md](plugin.md) for defaults and configuration.
 
 ## Turn structure
 
@@ -38,6 +44,8 @@ Types: [acp-messages.md](../research/acp-messages.md).
 
 ```md
 {agent_header}
+
+{assistant_message_header}
 
 {ContentBlock}
 ```

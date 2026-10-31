@@ -44,17 +44,19 @@ describe('render.conversation', function()
       assert.equals('hi', result[3])
     end)
 
-    it('emits assistant header above plain text content', function()
+    it('emits assistant header, then message header, above plain text content', function()
       local result = render.conversation(assistant_turn { { kind = 'text', text = 'hello' } }, CWD)
       assert.equals(config.header.assistant, result[1])
       assert.equals('', result[2])
-      assert.equals('hello', result[3])
+      assert.equals(config.assistant_message_header, result[3])
+      assert.equals('', result[4])
+      assert.equals('hello', result[5])
     end)
 
     it('renders multi-line text contents without fencing', function()
       local result = render.conversation(assistant_turn { { kind = 'text', text = 'one\ntwo' } }, CWD)
-      assert.equals('one', result[3])
-      assert.equals('two', result[4])
+      assert.equals('one', result[5])
+      assert.equals('two', result[6])
       for _, line in ipairs(result) do
         assert.not_equals('```', line)
       end
@@ -73,8 +75,45 @@ describe('render.conversation', function()
       assert.equals('', result[4])
       assert.equals(config.header.assistant, result[5])
       assert.equals('', result[6])
-      assert.equals('hey', result[7])
+      assert.equals(config.assistant_message_header, result[7])
       assert.equals('', result[8])
+      assert.equals('hey', result[9])
+      assert.equals('', result[10])
+    end)
+  end)
+
+  describe('assistant message header', function()
+    it('groups contiguous message contents under a single message header', function()
+      local result = render.conversation(
+        assistant_turn {
+          { kind = 'text', text = 'caption' },
+          { kind = 'image', mime_type = 'image/png', data = 'AAAA' },
+        },
+        CWD
+      )
+      assert.equals(1, count(result, config.assistant_message_header))
+      assert.equals(config.assistant_message_header, result[3])
+      assert.equals('', result[4])
+      assert.equals('caption', result[5])
+      assert.equals('', result[6])
+      assert.equals('[image/png](AAAA)', result[7])
+    end)
+
+    it('emits a fresh message header when a tool_call breaks the message run', function()
+      local result = render.conversation(
+        assistant_turn {
+          { kind = 'text', text = 'before' },
+          tool_call { title = 'Run', tool_kind = 'execute', status = 'completed' },
+          { kind = 'text', text = 'after' },
+        },
+        CWD
+      )
+      assert.equals(2, count(result, config.assistant_message_header))
+    end)
+
+    it('does not emit a message header for user turns', function()
+      local result = render.conversation(user_turn { { kind = 'text', text = 'hi' } }, CWD)
+      assert.equals(0, count(result, config.assistant_message_header))
     end)
   end)
 
@@ -205,11 +244,13 @@ describe('render.conversation', function()
       assert.equals(1, count(result, config.header.assistant))
       assert.equals(config.header.assistant, result[1])
       assert.equals('', result[2])
-      assert.equals('thinking', result[3])
+      assert.equals(config.assistant_message_header, result[3])
       assert.equals('', result[4])
-      assert.equals(config.tool_call_header, result[5])
+      assert.equals('thinking', result[5])
       assert.equals('', result[6])
-      assert.truthy(result[7]:find 'Run')
+      assert.equals(config.tool_call_header, result[7])
+      assert.equals('', result[8])
+      assert.truthy(result[9]:find 'Run')
     end)
 
     it('renders an assistant turn whose tool_call is followed by more text without repeating the agent header', function()

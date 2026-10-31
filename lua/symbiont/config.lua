@@ -7,6 +7,7 @@ local M = {
     user = '### You',
     assistant = '### Agent',
   },
+  assistant_message_header = '#### Message',
   tool_call_header = '#### Tool Call',
   thought_header = '#### Thinking',
   permission_header = '#### Permission',
